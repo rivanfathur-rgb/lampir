@@ -14,7 +14,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
-from PIL import Image
+from PIL import Image, ImageOps
 
 EKSTENSI = (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff")
 RATA = {"kiri": WD_ALIGN_PARAGRAPH.LEFT,
@@ -77,6 +77,32 @@ def parse_teks_per_nomor(teks):
     return hasil
 
 
+_JFIF = b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+
+
+def _siapkan_bytes(data):
+    """
+    Pastikan format gambar dikenali python-docx, TANPA mengubah/mengompres piksel.
+    - JPEG tanpa penanda JFIF/Exif (umum pada foto WhatsApp): sisipkan penanda JFIF.
+    - PNG/GIF/BMP/TIFF: dibiarkan.
+    - Format lain (WebP dll): diubah ke PNG (lossless).
+    """
+    if data[:2] == b"\xff\xd8":
+        if data[6:10] in (b"JFIF", b"Exif"):
+            return data
+        return data[:2] + _JFIF + data[2:]
+    if (data[:8] == b"\x89PNG\r\n\x1a\n" or data[:6] in (b"GIF87a", b"GIF89a")
+            or data[:2] == b"BM" or data[:4] in (b"II*\x00", b"MM\x00*")):
+        return data
+    with Image.open(io.BytesIO(data)) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+            im = im.convert("RGB")
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+    return buf.getvalue()
+
+
 def _siapkan_dokumen(cfg):
     doc = Document()
     sec = doc.sections[0]
@@ -104,9 +130,13 @@ def _siapkan_dokumen(cfg):
     return doc, sec.page_width - sec.left_margin - sec.right_margin
 
 
-def _ukuran_gambar(data, cfg):
+def _ukuran_gambar(data, cfg, maks_lebar_cm):
+    """Ukuran gambar (EMU). Lebar tidak pernah melebihi isi kolom, supaya tidak kepotong."""
+    lebar_cfg = cfg["lebar_foto_cm"]
+    tinggi_cfg = cfg["tinggi_foto_cm"]
     if cfg["paksa_ukuran"]:
-        return Cm(cfg["lebar_foto_cm"]), Cm(cfg["tinggi_foto_cm"])
+        k = min(1.0, maks_lebar_cm / lebar_cfg)
+        return Cm(lebar_cfg * k), Cm(tinggi_cfg * k)
     with Image.open(io.BytesIO(data)) as im:
         w, h = im.size
         try:
@@ -115,7 +145,7 @@ def _ukuran_gambar(data, cfg):
             orientasi = 1
     if orientasi in (5, 6, 7, 8):      # foto HP yang disimpan miring (EXIF)
         w, h = h, w
-    skala = min(cfg["lebar_foto_cm"] / w, cfg["tinggi_foto_cm"] / h)
+    skala = min(min(lebar_cfg, maks_lebar_cm) / w, tinggi_cfg / h)
     return Cm(w * skala), Cm(h * skala)
 
 
@@ -203,7 +233,7 @@ def _buat_tabel(doc, lebar_konten, grup, cfg):
                 elif j == "gambar":
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p.paragraph_format.keep_with_next = keep
-                    lebar, tinggi = _ukuran_gambar(data, cfg)
+                    lebar, tinggi = _ukuran_gambar(data, cfg, lebar_kolom / 360000 - 0.4)
                     p.add_run().add_picture(io.BytesIO(data), width=lebar, height=tinggi)
                 else:
                     teks = cfg["bawah"].get(nomor, cfg["bawah_default"]).replace("{n}", str(nomor))
@@ -223,6 +253,20 @@ def buat_docx(foto, cfg_user=None, penutup=None):
     cfg.update(cfg_user or {})
     if not foto:
         raise ValueError("Tidak ada foto.")
+
+    foto_ok = []
+    for nomor, data in foto:
+        try:
+            foto_ok.append((nomor, _siapkan_bytes(data)))
+        except Exception as e:
+            raise ValueError(f"Foto nomor {nomor} tidak bisa dibaca ({type(e).__name__}). "
+                             f"Coba simpan ulang fotonya sebagai JPG/PNG biasa.")
+    foto = foto_ok
+    if penutup:
+        try:
+            penutup = _siapkan_bytes(penutup)
+        except Exception as e:
+            raise ValueError(f"Gambar penutup tidak bisa dibaca ({type(e).__name__}).")
 
     doc, lebar_konten = _siapkan_dokumen(cfg)
 
