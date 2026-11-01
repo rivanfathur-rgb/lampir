@@ -1,19 +1,29 @@
-import streamlit as st
+import base64
+import hashlib
+import html
+import io
 
-from lampiran_core import buat_docx, parse_teks_per_nomor, pilah_foto
+import pandas as pd
+import streamlit as st
+from PIL import Image, ImageOps
+
+from lampiran_core import (buat_docx, kunci_alami, parse_teks_per_nomor,
+                           pilah_foto, urutkan_manual)
 
 st.set_page_config(page_title="Generator Lampiran", page_icon="📎")
 
-# Isi awal kolom "teks bawah". Edit di sini kalau mau default permanen.
-TEKS_BAWAH_AWAL = """1: A2=1 A1=1 A0=1
-2: A2=1 A1=1 A0=1
-3: A2=1 A1=1 A0=0
-4: A2=1 A1=0 A0=1
-5: A2=1 A1=0 A0=0
-6: A2=0 A1=1 A0=1
-7: A2=0 A1=1 A0=0
-8: A2=0 A1=0 A0=1
-9: A2=0 A1=0 A0=0"""
+MODE_PILIH = "Sesuai urutan pilih / upload"
+MODE_NAMA = "Urut nama file (A-Z)"
+MODE_ANGKA = "Nama file berupa angka (1.jpg, 2.png, ...)"
+
+PLACEHOLDER_BAWAH = """Ketik keterangan gambar di sini, contoh:
+1: R1=220Ohm
+2: V1=5V
+3: Keterangan
+dan seterusnya..."""
+
+PLACEHOLDER_ATAS = """Opsional, contoh:
+3: TABEL 1.2 BARIS 1"""
 
 
 # ---------- Password (opsional) ----------
@@ -38,29 +48,103 @@ def cek_password():
 if not cek_password():
     st.stop()
 
+
+# ---------- Pratinjau ----------
+@st.cache_data(show_spinner=False, max_entries=300)
+def thumb_b64(data: bytes):
+    """Thumbnail kecil (hanya untuk pratinjau; file Word tetap memakai foto asli)."""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((240, 240))
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=70)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+
+def tampilkan_pratinjau(item):
+    """item = [(nomor, nama, bytes), ...]"""
+    kotak = []
+    for nomor, nama, data in item:
+        b64 = thumb_b64(data)
+        if b64:
+            gambar = (f'<img src="data:image/jpeg;base64,{b64}" '
+                      f'style="width:100%;border-radius:4px">')
+        else:
+            gambar = '<div style="padding:24px 0;border:1px dashed #888">?</div>'
+        label = f"<b>{nomor}</b>" + (f" · {html.escape(nama)}" if nama else "")
+        kotak.append(
+            '<div style="width:31%;min-width:90px;text-align:center;font-size:12px;'
+            f'word-break:break-all">{gambar}<div>{label}</div></div>'
+        )
+    st.markdown(
+        '<div style="display:flex;flex-wrap:wrap;gap:8px">' + "".join(kotak) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 st.title("📎 Generator Lampiran Foto")
-st.caption("Nama file foto harus angka: 1.jpg, 2.png, 3.jpeg, dst. Foto dimasukkan apa adanya (tanpa kompresi).")
+st.caption("Pilih foto, atur teksnya, lalu download Word. Foto dimasukkan apa adanya (tanpa kompresi).")
 
 # ---------- Upload ----------
 berkas = st.file_uploader(
     "Pilih foto (bisa banyak sekaligus)",
-    type=["jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff"],
+    type=["jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "webp"],
     accept_multiple_files=True,
 )
 files = [(b.name, b.getvalue()) for b in (berkas or [])]
-foto, diabaikan, duplikat = pilah_foto(files)
 
-if berkas:
+mode = st.radio(
+    "Cara menentukan urutan foto",
+    [MODE_PILIH, MODE_NAMA, MODE_ANGKA],
+    help="Nomor foto (1, 2, 3, ...) menentukan posisi di tabel dan keterangan mana yang dipakai.",
+)
+
+foto = []          # [(nomor, bytes)]
+tampil = []        # [(nomor, nama, bytes)]
+
+if files:
+    if mode == MODE_ANGKA:
+        foto, diabaikan, duplikat = pilah_foto(files)
+        tampil = [(n, "", d) for n, d in foto]
+        if foto:
+            nomor = [n for n, _ in foto]
+            hilang = sorted(set(range(nomor[0], nomor[-1] + 1)) - set(nomor))
+            if hilang:
+                st.warning("Nomor yang loncat (tidak ada fotonya): " + ", ".join(map(str, hilang)))
+        if duplikat:
+            st.warning("Nomor ganda, yang terakhir dipakai: " + ", ".join(map(str, duplikat)))
+        if diabaikan:
+            st.warning("Dilewati karena namanya bukan angka: " + ", ".join(diabaikan))
+    else:
+        daftar = list(files)
+        if mode == MODE_NAMA:
+            daftar.sort(key=lambda f: kunci_alami(f[0]))
+        else:
+            st.caption("Urutan mengikuti urutan file yang dikirim browser/hape. "
+                       "Cek pratinjau di bawah; kalau belum sesuai, ubah lewat 'Ubah urutan'.")
+
+        nama_list = [n for n, _ in daftar]
+        with st.expander("Ubah urutan (opsional)"):
+            st.caption("Ubah angka di kolom Urutan. Foto dengan angka terkecil jadi nomor 1.")
+            kunci = "urut_" + hashlib.md5((mode + "|".join(nama_list)).encode()).hexdigest()
+            df = pd.DataFrame({"Urutan": list(range(1, len(daftar) + 1)), "Nama file": nama_list})
+            edit = st.data_editor(
+                df, hide_index=True, disabled=["Nama file"], key=kunci,
+                column_config={"Urutan": st.column_config.NumberColumn(min_value=1, step=1)},
+            )
+            nilai = edit["Urutan"].tolist()
+
+        urut = urutkan_manual(daftar, nilai)
+        foto = [(n, item[1]) for n, item in urut]
+        tampil = [(n, item[0], item[1]) for n, item in urut]
+
     if foto:
-        nomor = [n for n, _ in foto]
-        st.success(f"Terbaca {len(foto)} foto: nomor {nomor[0]} sampai {nomor[-1]}")
-        hilang = sorted(set(range(nomor[0], nomor[-1] + 1)) - set(nomor))
-        if hilang:
-            st.warning("Nomor yang loncat (tidak ada fotonya): " + ", ".join(map(str, hilang)))
-    if duplikat:
-        st.warning("Nomor ganda, yang terakhir dipakai: " + ", ".join(map(str, duplikat)))
-    if diabaikan:
-        st.warning("Dilewati karena namanya bukan angka: " + ", ".join(diabaikan))
+        st.success(f"{len(foto)} foto siap dipakai (nomor {foto[0][0]} sampai {foto[-1][0]})")
+        with st.expander("Pratinjau urutan", expanded=True):
+            tampilkan_pratinjau(tampil)
 
 # ---------- Susunan & ukuran ----------
 with st.expander("Susunan & ukuran", expanded=False):
@@ -94,12 +178,15 @@ with st.expander("Teks atas & bawah foto", expanded=True):
     atas_default = st.text_input("Teks atas (default semua foto)", "TABEL 1.1 BARIS {n}",
                                  help="{n} otomatis diganti nomor foto")
     atas_khusus = st.text_area("Teks atas khusus (opsional)", "", height=80,
-                               help='Satu baris per foto, format  nomor: teks   contoh  10: TABEL 1.2 BARIS 1')
+                               placeholder=PLACEHOLDER_ATAS,
+                               help="Satu baris per foto, format  nomor: teks")
 
     tampil_bawah = st.checkbox("Tampilkan teks bawah", value=True)
     bawah_default = st.text_input("Teks bawah (default kalau nomor tidak terdaftar)", "")
-    bawah_txt = st.text_area("Teks bawah per foto", TEKS_BAWAH_AWAL, height=220,
-                             help='Satu baris per foto, format  nomor: teks.  Tulis \\n untuk baris baru.')
+    bawah_txt = st.text_area("Keterangan gambar (teks bawah)", "", height=220,
+                             placeholder=PLACEHOLDER_BAWAH,
+                             help="Satu baris per foto, format  nomor: teks. "
+                                  "Nomor = nomor di pratinjau. Tulis \\n untuk baris baru.")
 
     t1, t2, t3 = st.columns(3)
     atas_bold = t1.checkbox("Atas tebal", value=True)
@@ -108,7 +195,8 @@ with st.expander("Teks atas & bawah foto", expanded=True):
 
 # ---------- Gambar penutup ----------
 with st.expander("Gambar penutup (opsional)"):
-    penutup_file = st.file_uploader("Gambar di akhir dokumen", type=["png", "jpg", "jpeg"], key="penutup")
+    penutup_file = st.file_uploader("Gambar di akhir dokumen", type=["png", "jpg", "jpeg", "webp"],
+                                    key="penutup")
     p1, p2 = st.columns(2)
     p_lebar = p1.number_input("Lebar (cm)", 1.0, 30.0, 7.4, step=0.1)
     p_tinggi = p2.number_input("Tinggi (cm)", 1.0, 30.0, 22.9, step=0.1)
