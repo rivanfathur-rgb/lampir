@@ -16,7 +16,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from PIL import Image, ImageOps
 
-EKSTENSI = (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff")
+EKSTENSI = (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp")
 RATA = {"kiri": WD_ALIGN_PARAGRAPH.LEFT,
         "tengah": WD_ALIGN_PARAGRAPH.CENTER,
         "kanan": WD_ALIGN_PARAGRAPH.RIGHT}
@@ -59,6 +59,30 @@ def pilah_foto(files):
         else:
             diabaikan.append(nama)
     return sorted(peta.items()), diabaikan, sorted(set(duplikat))
+
+
+def kunci_alami(nama):
+    """Kunci urut nama file secara alami: IMG_2 sebelum IMG_10."""
+    bagian = re.split(r"(\d+)", nama)
+    return [t.lower() if i % 2 == 0 else int(t) for i, t in enumerate(bagian)]
+
+
+def urutkan_manual(daftar, nilai_urutan):
+    """
+    daftar        : list item apa saja (sudah dalam urutan awal)
+    nilai_urutan  : angka urutan per item (boleh kosong/rusak -> ditaruh paling akhir)
+    return        : [(nomor_baru, item), ...] nomor_baru mulai dari 1
+    """
+    def kunci(i):
+        try:
+            v = float(nilai_urutan[i])
+            if v != v:           # NaN
+                v = float("inf")
+        except Exception:
+            v = float("inf")
+        return (v, i)
+    urut = sorted(range(len(daftar)), key=kunci)
+    return [(k + 1, daftar[i]) for k, i in enumerate(urut)]
 
 
 def parse_teks_per_nomor(teks):
