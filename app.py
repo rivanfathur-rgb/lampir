@@ -12,12 +12,14 @@ from lampiran_core import (buat_docx, kunci_alami, parse_teks_per_nomor,
                            pilah_foto, urutkan_manual)
 
 # ---------- Tampilan (edit di sini) ----------
-NAMA_APP     = "LMPRN"                        # teks logo
+NAMA_APP     = "LampirGen"                        # teks logo
 TAGLINE      = "Lampiran foto otomatis ke Word"
 FONT_LOGO    = "Orbitron"                         # nama font dari fonts.google.com
                                                   # (contoh lain: "Space Grotesk", "Audiowide", "Rubik Glitch", "Pacifico")
 WARNA_LOGO_1 = "#4F8BF9"                          # warna gradasi kiri
 WARNA_LOGO_2 = "#9B5DE5"                          # warna gradasi kanan
+LEBAR_LOGO   = "100%"                             # lebar logo: "100%" = selebar kolom di bawahnya,
+                                                  # atau "70%" / "400px" kalau mau lebih kecil
 LOGO_FILE    = "logo.png"                         # logo buatan sendiri; taruh di repo (png/jpg/svg).
                                                   # kalau file tidak ada, dipakai logo tulisan di atas
 
@@ -80,7 +82,7 @@ def _logo_html():
         mime = {"svg": "image/svg+xml", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, f"image/{ext}")
         with open(LOGO_FILE, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-        return f'<img src="data:{mime};base64,{b64}" style="max-height:70px;max-width:85%">'
+        return f'<img src="data:{mime};base64,{b64}" style="width:{LEBAR_LOGO};max-width:100%;height:auto">'
     return f'<div class="lg-text">{html.escape(NAMA_APP)}</div>'
 
 
@@ -145,7 +147,7 @@ def kunci_inspect():
 
 
 kunci_inspect()
-st.caption("Pilih foto, atur teksnya, lalu download file Word.")
+st.caption("Pilih foto, atur teksnya, lalu download Word.")
 
 # ---------- Upload ----------
 berkas = st.file_uploader(
