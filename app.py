@@ -2,6 +2,7 @@ import base64
 import hashlib
 import html
 import io
+import os
 
 import pandas as pd
 import streamlit as st
@@ -10,7 +11,17 @@ from PIL import Image, ImageOps
 from lampiran_core import (buat_docx, kunci_alami, parse_teks_per_nomor,
                            pilah_foto, urutkan_manual)
 
-st.set_page_config(page_title="Generator Lampiran", page_icon="📎")
+# ---------- Tampilan (edit di sini) ----------
+NAMA_APP     = "LampirGen"                        # teks logo
+TAGLINE      = "Lampiran foto otomatis ke Word"
+FONT_LOGO    = "Orbitron"                         # nama font dari fonts.google.com
+                                                  # (contoh lain: "Space Grotesk", "Audiowide", "Rubik Glitch", "Pacifico")
+WARNA_LOGO_1 = "#4F8BF9"                          # warna gradasi kiri
+WARNA_LOGO_2 = "#9B5DE5"                          # warna gradasi kanan
+LOGO_FILE    = "logo.png"                         # logo buatan sendiri; taruh di repo (png/jpg/svg).
+                                                  # kalau file tidak ada, dipakai logo tulisan di atas
+
+st.set_page_config(page_title=NAMA_APP, page_icon="📎")
 
 MODE_PILIH = "Sesuai urutan pilih / upload"
 MODE_NAMA = "Urut nama file (A-Z)"
@@ -24,29 +35,6 @@ dan seterusnya..."""
 
 PLACEHOLDER_ATAS = """Opsional, contoh:
 3: TABEL 1.2 BARIS 1"""
-
-
-# ---------- Password (opsional) ----------
-# Kalau di Secrets ada PASSWORD = "...", app minta password dulu.
-def cek_password():
-    try:
-        pw = st.secrets["PASSWORD"]
-    except Exception:
-        return True                      # tidak ada password diset
-    if st.session_state.get("lolos"):
-        return True
-    masuk = st.text_input("Password", type="password")
-    if masuk:
-        if masuk == pw:
-            st.session_state["lolos"] = True
-            st.rerun()
-        else:
-            st.error("Password salah.")
-    return False
-
-
-if not cek_password():
-    st.stop()
 
 
 # ---------- Pratinjau ----------
@@ -85,7 +73,44 @@ def tampilkan_pratinjau(item):
     )
 
 
-st.title("📎 Generator Lampiran Foto")
+# ---------- Header kustom (logo) + sembunyikan menu bawaan ----------
+def _logo_html():
+    if LOGO_FILE and os.path.isfile(LOGO_FILE):
+        ext = os.path.splitext(LOGO_FILE)[1].lower().lstrip(".")
+        mime = {"svg": "image/svg+xml", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, f"image/{ext}")
+        with open(LOGO_FILE, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        return f'<img src="data:{mime};base64,{b64}" style="max-height:70px;max-width:85%">'
+    return f'<div class="lg-text">{html.escape(NAMA_APP)}</div>'
+
+
+def tampilkan_header():
+    font_url = FONT_LOGO.replace(" ", "+")
+    st.markdown(
+        f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family={font_url}:wght@600;800&display=swap');
+header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stMainMenu"],
+[data-testid="stAppDeployButton"], [data-testid="stDecoration"], #MainMenu, footer {{
+    display: none !important;
+}}
+.block-container {{ padding-top: 1.2rem; }}
+.lg-wrap {{ text-align: center; margin: 0 0 1.2rem 0; }}
+.lg-text {{
+    font-family: '{FONT_LOGO}', sans-serif; font-weight: 800; font-size: 2.3rem;
+    letter-spacing: .06em; line-height: 1.2;
+    background: linear-gradient(90deg, {WARNA_LOGO_1}, {WARNA_LOGO_2});
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}}
+.lg-tag {{ opacity: .7; font-size: .9rem; margin-top: .2rem; }}
+</style>
+<div class="lg-wrap">{_logo_html()}<div class="lg-tag">{html.escape(TAGLINE)}</div></div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+tampilkan_header()
 st.caption("Pilih foto, atur teksnya, lalu download Word. Foto dimasukkan apa adanya (tanpa kompresi).")
 
 # ---------- Upload ----------
