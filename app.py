@@ -12,7 +12,7 @@ from lampiran_core import (buat_docx, kunci_alami, parse_teks_per_nomor,
                            pilah_foto, urutkan_manual)
 
 # ---------- Tampilan (edit di sini) ----------
-NAMA_APP     = "LampirGen"                        # teks logo
+NAMA_APP     = "LMPRN"                        # teks logo
 TAGLINE      = "Lampiran foto otomatis ke Word"
 FONT_LOGO    = "Orbitron"                         # nama font dari fonts.google.com
                                                   # (contoh lain: "Space Grotesk", "Audiowide", "Rubik Glitch", "Pacifico")
@@ -91,7 +91,8 @@ def tampilkan_header():
 <style>
 @import url('https://fonts.googleapis.com/css2?family={font_url}:wght@600;800&display=swap');
 header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stMainMenu"],
-[data-testid="stAppDeployButton"], [data-testid="stDecoration"], #MainMenu, footer {{
+[data-testid="stAppDeployButton"], [data-testid="stDecoration"], #MainMenu, footer,
+[data-testid="stFileUploaderDropzoneInstructions"] {{
     display: none !important;
 }}
 .block-container {{ padding-top: 1.2rem; }}
@@ -111,7 +112,40 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stMainM
 
 
 tampilkan_header()
-st.caption("Pilih foto, atur teksnya, lalu download Word. Foto dimasukkan apa adanya (tanpa kompresi).")
+
+def kunci_inspect():
+    """
+    Pencegah ringan: blokir klik kanan (di luar kolom ketik) dan pintasan DevTools
+    (F12, Ctrl+Shift+I/J/C, Ctrl+U). Ini hanya penghalang tampilan, bukan pengaman sungguhan.
+    """
+    js = """
+<script>
+(function () {
+  if (window.__lampirLock) return;
+  window.__lampirLock = true;
+  document.addEventListener('contextmenu', function (e) {
+    var t = e.target.tagName;
+    if (t !== 'INPUT' && t !== 'TEXTAREA') e.preventDefault();
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    var k = (e.key || '').toLowerCase();
+    var blok = e.key === 'F12'
+      || (e.ctrlKey && e.shiftKey && (k === 'i' || k === 'j' || k === 'c'))
+      || (e.ctrlKey && k === 'u')
+      || (e.metaKey && e.altKey && (k === 'i' || k === 'j' || k === 'c' || k === 'u'));
+    if (blok) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+})();
+</script>
+"""
+    try:
+        st.html(js, unsafe_allow_javascript=True)
+    except Exception:
+        pass            # versi Streamlit lama: lewati saja
+
+
+kunci_inspect()
+st.caption("Pilih foto, atur teksnya, lalu download file Word.")
 
 # ---------- Upload ----------
 berkas = st.file_uploader(
@@ -172,15 +206,33 @@ if files:
             tampilkan_pratinjau(tampil)
 
 # ---------- Susunan & ukuran ----------
+def sinkron_ukuran():
+    """Hitung ulang lebar & tinggi foto sesuai kolom, kertas, orientasi, dan margin."""
+    ss = st.session_state
+    w, h = (21.0, 29.7) if ss["kertas"] == "A4" else (21.59, 27.94)
+    if ss["landscape"]:
+        w = h
+    lebar_kolom = (w - 2 * ss["margin"]) / ss["kolom"]
+    lebar = max(1.0, min(30.0, lebar_kolom - 0.4))     # 0.4 cm = ruang dalam sel tabel
+    ss["lebar"] = round(lebar, 2)
+    ss["tinggi"] = round(min(30.0, lebar * 0.75), 2)    # rasio 4:3
+
+
+if "lebar" not in st.session_state:
+    st.session_state.update(kolom=2, kertas="A4", landscape=False, margin=2.54)
+    sinkron_ukuran()
+
 with st.expander("Susunan & ukuran", expanded=False):
     c1, c2 = st.columns(2)
-    kolom = c1.number_input("Kolom (foto per baris)", 1, 6, 2)
+    kolom = c1.number_input("Kolom (foto per baris)", 1, 6, step=1,
+                            key="kolom", on_change=sinkron_ukuran)
     bph_on = c2.checkbox("Paksa jumlah baris per halaman")
     bph = c2.number_input("Baris per halaman", 1, 20, 3) if bph_on else None
 
+    st.caption("Lebar dan tinggi otomatis menyesuaikan jumlah kolom")
     c3, c4 = st.columns(2)
-    lebar = c3.number_input("Lebar foto (cm)", 1.0, 30.0, 8.53, step=0.1)
-    tinggi = c4.number_input("Tinggi foto (cm)", 1.0, 30.0, 6.40, step=0.1)
+    lebar = c3.number_input("Lebar foto (cm)", 1.0, 30.0, step=0.1, format="%.2f", key="lebar")
+    tinggi = c4.number_input("Tinggi foto (cm)", 1.0, 30.0, step=0.1, format="%.2f", key="tinggi")
     paksa = st.checkbox("Paksa ukuran persis (foto bisa gepeng)", value=False)
 
     gaya = st.selectbox(
@@ -193,9 +245,10 @@ with st.expander("Susunan & ukuran", expanded=False):
     tebal = st.slider("Tebal garis (1/8 pt)", 2, 24, 12)
 
     c5, c6 = st.columns(2)
-    kertas = c5.selectbox("Kertas", ["Letter", "A4"])
-    landscape = c6.checkbox("Landscape")
-    margin = st.number_input("Margin (cm)", 0.5, 5.0, 2.54, step=0.1)
+    kertas = c5.selectbox("Kertas", ["A4", "Letter"], key="kertas", on_change=sinkron_ukuran)
+    landscape = c6.checkbox("Landscape", key="landscape", on_change=sinkron_ukuran)
+    margin = st.number_input("Margin (cm)", 0.5, 5.0, step=0.1, format="%.2f",
+                             key="margin", on_change=sinkron_ukuran)
 
 # ---------- Teks ----------
 with st.expander("Teks atas & bawah foto", expanded=True):
@@ -218,15 +271,6 @@ with st.expander("Teks atas & bawah foto", expanded=True):
     bawah_bold = t2.checkbox("Bawah tebal", value=False)
     ukuran_teks = t3.number_input("Ukuran teks (pt)", 6, 30, 12)
 
-# ---------- Gambar penutup ----------
-with st.expander("Gambar penutup (opsional)"):
-    penutup_file = st.file_uploader("Gambar di akhir dokumen", type=["png", "jpg", "jpeg", "webp"],
-                                    key="penutup")
-    p1, p2 = st.columns(2)
-    p_lebar = p1.number_input("Lebar (cm)", 1.0, 30.0, 7.4, step=0.1)
-    p_tinggi = p2.number_input("Tinggi (cm)", 1.0, 30.0, 22.9, step=0.1)
-    p_baru = st.checkbox("Mulai di halaman baru", value=False)
-
 nama_out = st.text_input("Nama file hasil", "Lampiran.docx")
 if not nama_out.lower().endswith(".docx"):
     nama_out += ".docx"
@@ -244,12 +288,10 @@ if st.button("Buat Word", type="primary", disabled=not foto):
         "tampil_bawah": tampil_bawah, "bawah_default": bawah_default,
         "bawah": parse_teks_per_nomor(bawah_txt), "bawah_bold": bawah_bold,
         "bawah_ukuran": int(ukuran_teks),
-        "penutup_lebar_cm": float(p_lebar), "penutup_tinggi_cm": float(p_tinggi),
-        "penutup_halaman_baru": p_baru,
     }
     try:
         with st.spinner("Menyusun dokumen..."):
-            hasil = buat_docx(foto, cfg, penutup_file.getvalue() if penutup_file else None)
+            hasil = buat_docx(foto, cfg)
         st.session_state["hasil"] = hasil
         st.session_state["nama"] = nama_out
     except Exception as e:
