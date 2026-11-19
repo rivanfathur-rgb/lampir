@@ -1,8 +1,3 @@
-"""
-Inti pembuat lampiran Word. Dipakai oleh app.py (web) dan bisa dites tanpa Streamlit.
-Foto dimasukkan apa adanya (tanpa kompresi).
-"""
-
 import io
 import os
 import re
@@ -22,32 +17,20 @@ RATA = {"kiri": WD_ALIGN_PARAGRAPH.LEFT,
         "kanan": WD_ALIGN_PARAGRAPH.RIGHT}
 
 DEFAULT = {
-    # halaman
     "kertas": "Letter", "landscape": False, "margin_cm": 2.54,
     "font": "Calibri", "ukuran_font": 12,
-    # tabel
     "kolom": 2, "baris_per_halaman": None,
     "lebar_foto_cm": 8.53, "tinggi_foto_cm": 6.40, "paksa_ukuran": False,
     "gaya_garis": "kotak_per_baris", "tebal_garis": 12,
-    # teks atas
     "tampil_atas": True, "atas_default": "TABEL 1.1 BARIS {n}", "atas": {},
     "atas_bold": True, "atas_ukuran": 12, "atas_rata": "tengah",
-    # teks bawah
     "tampil_bawah": True, "bawah_default": "", "bawah": {},
     "bawah_bold": False, "bawah_ukuran": 12, "bawah_rata": "tengah",
-    # gambar penutup
     "penutup_lebar_cm": 7.4, "penutup_tinggi_cm": 22.9, "penutup_halaman_baru": False,
 }
 
 
 def pilah_foto(files):
-    """
-    files = list of (nama_file, bytes).
-    Return (foto_terurut, diabaikan, duplikat)
-      foto_terurut : [(nomor, bytes), ...] urut angka
-      diabaikan    : nama file yang bukan angka / bukan gambar
-      duplikat     : nomor yang muncul lebih dari sekali
-    """
     peta, diabaikan, duplikat = {}, [], []
     for nama, data in files:
         base, ext = os.path.splitext(nama)
@@ -62,21 +45,15 @@ def pilah_foto(files):
 
 
 def kunci_alami(nama):
-    """Kunci urut nama file secara alami: IMG_2 sebelum IMG_10."""
     bagian = re.split(r"(\d+)", nama)
     return [t.lower() if i % 2 == 0 else int(t) for i, t in enumerate(bagian)]
 
 
 def urutkan_manual(daftar, nilai_urutan):
-    """
-    daftar        : list item apa saja (sudah dalam urutan awal)
-    nilai_urutan  : angka urutan per item (boleh kosong/rusak -> ditaruh paling akhir)
-    return        : [(nomor_baru, item), ...] nomor_baru mulai dari 1
-    """
     def kunci(i):
         try:
             v = float(nilai_urutan[i])
-            if v != v:           # NaN
+            if v != v:
                 v = float("inf")
         except Exception:
             v = float("inf")
@@ -86,10 +63,6 @@ def urutkan_manual(daftar, nilai_urutan):
 
 
 def parse_teks_per_nomor(teks):
-    """
-    Ubah teks multi-baris 'nomor: isi' menjadi dict {nomor: isi}.
-    Tulis \\n di dalam isi untuk baris baru.
-    """
     hasil = {}
     for baris in teks.splitlines():
         if ":" not in baris:
@@ -105,12 +78,6 @@ _JFIF = b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
 
 
 def _siapkan_bytes(data):
-    """
-    Pastikan format gambar dikenali python-docx, TANPA mengubah/mengompres piksel.
-    - JPEG tanpa penanda JFIF/Exif (umum pada foto WhatsApp): sisipkan penanda JFIF.
-    - PNG/GIF/BMP/TIFF: dibiarkan.
-    - Format lain (WebP dll): diubah ke PNG (lossless).
-    """
     if data[:2] == b"\xff\xd8":
         if data[6:10] in (b"JFIF", b"Exif"):
             return data
@@ -155,7 +122,6 @@ def _siapkan_dokumen(cfg):
 
 
 def _ukuran_gambar(data, cfg, maks_lebar_cm):
-    """Ukuran gambar (EMU). Lebar tidak pernah melebihi isi kolom, supaya tidak kepotong."""
     lebar_cfg = cfg["lebar_foto_cm"]
     tinggi_cfg = cfg["tinggi_foto_cm"]
     if cfg["paksa_ukuran"]:
@@ -167,7 +133,7 @@ def _ukuran_gambar(data, cfg, maks_lebar_cm):
             orientasi = im.getexif().get(0x0112, 1)
         except Exception:
             orientasi = 1
-    if orientasi in (5, 6, 7, 8):      # foto HP yang disimpan miring (EXIF)
+    if orientasi in (5, 6, 7, 8):
         w, h = h, w
     skala = min(min(lebar_cfg, maks_lebar_cm) / w, tinggi_cfg / h)
     return Cm(w * skala), Cm(h * skala)
@@ -267,12 +233,6 @@ def _buat_tabel(doc, lebar_konten, grup, cfg):
 
 
 def buat_docx(foto, cfg_user=None, penutup=None):
-    """
-    foto    : [(nomor, bytes), ...] sudah urut
-    cfg_user: dict yang menimpa DEFAULT
-    penutup : bytes gambar penutup (opsional)
-    return  : bytes file .docx
-    """
     cfg = dict(DEFAULT)
     cfg.update(cfg_user or {})
     if not foto:
