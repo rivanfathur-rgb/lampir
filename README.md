@@ -6,6 +6,14 @@ Aplikasi web untuk menyusun foto lampiran laporan praktikum ke dokumen Word (.do
 
 > Aplikasi berjalan di hosting gratis Streamlit, jadi bisa "tertidur" kalau lama tidak dipakai. Kalau muncul tombol untuk membangunkannya, klik saja dan tunggu beberapa saat.
 
+## Tampilan
+
+![Halaman utama](docs/utama.png)
+
+![Pratinjau urutan foto](docs/pratinjau.png)
+
+![Pengaturan susunan dan ukuran](docs/susunan.png)
+
 ## Latar belakang
 
 Menyusun foto lampiran laprak di Word memakan waktu dan cukup ribet, terutama bagi yang kurang lincah memakai Word. LampirGen dibuat untuk mempersingkat proses itu, dan bisa dipakai dari HP ketika sedang tidak membawa laptop.
