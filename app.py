@@ -11,17 +11,13 @@ from PIL import Image, ImageOps
 from lampiran_core import (buat_docx, kunci_alami, parse_teks_per_nomor,
                            pilah_foto, urutkan_manual)
 
-# ---------- Tampilan (edit di sini) ----------
-NAMA_APP     = "LampirGen"                        # teks logo
-TAGLINE      = "Lampiran foto otomatis ke Word"
-FONT_LOGO    = "Orbitron"                         # nama font dari fonts.google.com
-                                                  # (contoh lain: "Space Grotesk", "Audiowide", "Rubik Glitch", "Pacifico")
-WARNA_LOGO_1 = "#4F8BF9"                          # warna gradasi kiri
-WARNA_LOGO_2 = "#9B5DE5"                          # warna gradasi kanan
-LEBAR_LOGO   = "100%"                             # lebar logo: "100%" = selebar kolom di bawahnya,
-                                                  # atau "70%" / "400px" kalau mau lebih kecil
-LOGO_FILE    = "logo.png"                         # logo buatan sendiri; taruh di repo (png/jpg/svg).
-                                                  # kalau file tidak ada, dipakai logo tulisan di atas
+NAMA_APP = "LampirGen"
+TAGLINE = "Lampiran foto otomatis ke Word"
+FONT_LOGO = "Orbitron"
+WARNA_LOGO_1 = "#4F8BF9"
+WARNA_LOGO_2 = "#9B5DE5"
+LEBAR_LOGO = "100%"
+LOGO_FILE = "logo.png"
 
 st.set_page_config(page_title=NAMA_APP, page_icon="📎")
 
@@ -39,10 +35,8 @@ PLACEHOLDER_ATAS = """Opsional, contoh:
 3: TABEL 1.2 BARIS 1"""
 
 
-# ---------- Pratinjau ----------
 @st.cache_data(show_spinner=False, max_entries=300)
 def thumb_b64(data: bytes):
-    """Thumbnail kecil (hanya untuk pratinjau; file Word tetap memakai foto asli)."""
     try:
         with Image.open(io.BytesIO(data)) as im:
             im = ImageOps.exif_transpose(im)
@@ -55,7 +49,6 @@ def thumb_b64(data: bytes):
 
 
 def tampilkan_pratinjau(item):
-    """item = [(nomor, nama, bytes), ...]"""
     kotak = []
     for nomor, nama, data in item:
         b64 = thumb_b64(data)
@@ -75,7 +68,6 @@ def tampilkan_pratinjau(item):
     )
 
 
-# ---------- Header kustom (logo) + sembunyikan menu bawaan ----------
 def _logo_html():
     if LOGO_FILE and os.path.isfile(LOGO_FILE):
         ext = os.path.splitext(LOGO_FILE)[1].lower().lstrip(".")
@@ -115,11 +107,8 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stMainM
 
 tampilkan_header()
 
+
 def kunci_inspect():
-    """
-    Pencegah ringan: blokir klik kanan (di luar kolom ketik) dan pintasan DevTools
-    (F12, Ctrl+Shift+I/J/C, Ctrl+U). Ini hanya penghalang tampilan, bukan pengaman sungguhan.
-    """
     js = """
 <script>
 (function () {
@@ -143,13 +132,12 @@ def kunci_inspect():
     try:
         st.html(js, unsafe_allow_javascript=True)
     except Exception:
-        pass            # versi Streamlit lama: lewati saja
+        pass
 
 
 kunci_inspect()
 st.caption("Pilih foto, atur teksnya, lalu download Word.")
 
-# ---------- Upload ----------
 berkas = st.file_uploader(
     "Pilih foto (bisa banyak sekaligus)",
     type=["jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "webp"],
@@ -163,8 +151,8 @@ mode = st.radio(
     help="Nomor foto (1, 2, 3, ...) menentukan posisi di tabel dan keterangan mana yang dipakai.",
 )
 
-foto = []          # [(nomor, bytes)]
-tampil = []        # [(nomor, nama, bytes)]
+foto = []
+tampil = []
 
 if files:
     if mode == MODE_ANGKA:
@@ -207,17 +195,16 @@ if files:
         with st.expander("Pratinjau urutan", expanded=True):
             tampilkan_pratinjau(tampil)
 
-# ---------- Susunan & ukuran ----------
+
 def sinkron_ukuran():
-    """Hitung ulang lebar & tinggi foto sesuai kolom, kertas, orientasi, dan margin."""
     ss = st.session_state
     w, h = (21.0, 29.7) if ss["kertas"] == "A4" else (21.59, 27.94)
     if ss["landscape"]:
         w = h
     lebar_kolom = (w - 2 * ss["margin"]) / ss["kolom"]
-    lebar = max(1.0, min(30.0, lebar_kolom - 0.4))     # 0.4 cm = ruang dalam sel tabel
+    lebar = max(1.0, min(30.0, lebar_kolom - 0.4))
     ss["lebar"] = round(lebar, 2)
-    ss["tinggi"] = round(min(30.0, lebar * 0.75), 2)    # rasio 4:3
+    ss["tinggi"] = round(min(30.0, lebar * 0.75), 2)
 
 
 if "lebar" not in st.session_state:
@@ -252,7 +239,6 @@ with st.expander("Susunan & ukuran", expanded=False):
     margin = st.number_input("Margin (cm)", 0.5, 5.0, step=0.1, format="%.2f",
                              key="margin", on_change=sinkron_ukuran)
 
-# ---------- Teks ----------
 with st.expander("Teks atas & bawah foto", expanded=True):
     tampil_atas = st.checkbox("Tampilkan teks atas", value=True)
     atas_default = st.text_input("Teks atas (default semua foto)", "TABEL 1.1 BARIS {n}",
@@ -277,7 +263,6 @@ nama_out = st.text_input("Nama file hasil", "Lampiran.docx")
 if not nama_out.lower().endswith(".docx"):
     nama_out += ".docx"
 
-# ---------- Buat ----------
 if st.button("Buat Word", type="primary", disabled=not foto):
     cfg = {
         "kolom": int(kolom), "baris_per_halaman": int(bph) if bph else None,
