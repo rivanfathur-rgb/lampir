@@ -8,11 +8,17 @@ Aplikasi web untuk menyusun foto lampiran laporan praktikum ke dokumen Word (.do
 
 ## Tampilan
 
-![Halaman utama](docs/utama.png)
+<p align="center">
+  <img src="docs/utama.png" alt="Halaman utama" width="500">
+</p>
 
-![Pratinjau urutan foto](docs/pratinjau.png)
+<p align="center">
+  <img src="docs/pratinjau.png" alt="Pratinjau urutan foto" width="500">
+</p>
 
-![Pengaturan susunan dan ukuran](docs/susunan.png)
+<p align="center">
+  <img src="docs/susunan.png" alt="Pengaturan susunan dan ukuran" width="500">
+</p>
 
 ## Latar belakang
 
